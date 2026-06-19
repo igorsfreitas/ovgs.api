@@ -1,0 +1,24 @@
+# Compose para desenvolvimento local: sobe apenas a infraestrutura (Postgres),
+# enquanto a aplicação roda no host via `npm run start:dev`.
+# Uso: `npm run db:up` (sobe) / `npm run db:down` (derruba) / `npm run db:reset` (recria do zero).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ovgs-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-ovgs}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-ovgs}
+      POSTGRES_DB: ${DATABASE_NAME:-ovgs}
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - ovgs-pgdata-local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-ovgs} -d ${DATABASE_NAME:-ovgs}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ovgs-pgdata-local:

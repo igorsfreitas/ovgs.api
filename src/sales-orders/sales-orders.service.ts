@@ -12,6 +12,8 @@ import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { SalesOrderItem } from './entities/sales-order-item.entity';
 import { SalesOrder } from './entities/sales-order.entity';
 import { SalesOrderStatus } from './enums/sales-order-status.enum';
+import { InvalidStatusTransitionException } from './exceptions/invalid-status-transition.exception';
+import { canTransition } from './sales-order-state-machine';
 
 @Injectable()
 export class SalesOrdersService {
@@ -75,5 +77,19 @@ export class SalesOrdersService {
       throw new NotFoundException(`Sales order ${id} not found`);
     }
     return found;
+  }
+
+  /** Atualiza o status respeitando a máquina de estados (transições válidas). */
+  async updateStatus(
+    id: string,
+    target: SalesOrderStatus,
+  ): Promise<SalesOrder> {
+    const order = await this.findOne(id);
+    if (!canTransition(order.status, target)) {
+      throw new InvalidStatusTransitionException(order.status, target);
+    }
+    order.status = target;
+    await this.repo.save(order);
+    return this.findOne(id);
   }
 }

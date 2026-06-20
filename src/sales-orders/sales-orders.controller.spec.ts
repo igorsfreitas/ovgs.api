@@ -1,3 +1,4 @@
+import { SalesOrderStatus } from './enums/sales-order-status.enum';
 import { SalesOrdersController } from './sales-orders.controller';
 import { SalesOrdersService } from './sales-orders.service';
 
@@ -6,6 +7,7 @@ describe('SalesOrdersController', () => {
     create: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
+    updateStatus: jest.fn(),
   };
   let controller: SalesOrdersController;
 
@@ -37,5 +39,16 @@ describe('SalesOrdersController', () => {
     service.findOne.mockResolvedValue({ id: 'so1' });
     await controller.findOne('so1');
     expect(service.findOne).toHaveBeenCalledWith('so1');
+  });
+
+  it('delegates updateStatus', async () => {
+    service.updateStatus.mockResolvedValue({ id: 'so1' });
+    await controller.updateStatus('so1', {
+      status: SalesOrderStatus.Planejada,
+    });
+    expect(service.updateStatus).toHaveBeenCalledWith(
+      'so1',
+      SalesOrderStatus.Planejada,
+    );
   });
 });

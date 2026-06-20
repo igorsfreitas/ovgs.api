@@ -6,6 +6,8 @@ import { ItemsService } from '../items/items.service';
 import { TransportTypesService } from '../transport-types/transport-types.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { SalesOrder } from './entities/sales-order.entity';
+import { SalesOrderStatus } from './enums/sales-order-status.enum';
+import { InvalidStatusTransitionException } from './exceptions/invalid-status-transition.exception';
 import { SalesOrdersService } from './sales-orders.service';
 
 describe('SalesOrdersService', () => {
@@ -106,6 +108,45 @@ describe('SalesOrdersService', () => {
         relations: { customer: true, transportType: true },
         order: { createdAt: 'DESC' },
       });
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('advances to the next valid state', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({ id: 'so1', status: SalesOrderStatus.Criada })
+        .mockResolvedValueOnce({
+          id: 'so1',
+          status: SalesOrderStatus.Planejada,
+        });
+      repo.save.mockResolvedValue({});
+
+      const result = await service.updateStatus(
+        'so1',
+        SalesOrderStatus.Planejada,
+      );
+
+      expect(repo.save).toHaveBeenCalled();
+      expect(result.status).toBe(SalesOrderStatus.Planejada);
+    });
+
+    it('rejects an invalid (out-of-sequence) transition', async () => {
+      repo.findOne.mockResolvedValue({
+        id: 'so1',
+        status: SalesOrderStatus.Criada,
+      });
+
+      await expect(
+        service.updateStatus('so1', SalesOrderStatus.Entregue),
+      ).rejects.toBeInstanceOf(InvalidStatusTransitionException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws when the order does not exist', async () => {
+      repo.findOne.mockResolvedValue(null);
+      await expect(
+        service.updateStatus('x', SalesOrderStatus.Planejada),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

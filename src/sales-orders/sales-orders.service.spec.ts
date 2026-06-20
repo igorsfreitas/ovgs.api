@@ -1,0 +1,111 @@
+import { NotFoundException } from '@nestjs/common';
+import { Repository } from 'typeorm';
+import { BusinessRuleException } from '../common/exceptions/business-rule.exception';
+import { CustomersService } from '../customers/customers.service';
+import { ItemsService } from '../items/items.service';
+import { TransportTypesService } from '../transport-types/transport-types.service';
+import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { SalesOrder } from './entities/sales-order.entity';
+import { SalesOrdersService } from './sales-orders.service';
+
+describe('SalesOrdersService', () => {
+  const repo = {
+    create: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+    findOne: jest.fn(),
+  };
+  const customers = { findOne: jest.fn(), isTransportAuthorized: jest.fn() };
+  const transportTypes = { findOne: jest.fn() };
+  const items = { findByIds: jest.fn() };
+  let service: SalesOrdersService;
+
+  const dto: CreateSalesOrderDto = {
+    customerId: 'c1',
+    transportTypeId: 't1',
+    items: [{ itemId: 'i1', quantity: 2 }],
+  };
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    service = new SalesOrdersService(
+      repo as unknown as Repository<SalesOrder>,
+      customers as unknown as CustomersService,
+      transportTypes as unknown as TransportTypesService,
+      items as unknown as ItemsService,
+    );
+  });
+
+  describe('create', () => {
+    it('creates an order when all rules pass', async () => {
+      customers.findOne.mockResolvedValue({ id: 'c1' });
+      transportTypes.findOne.mockResolvedValue({ id: 't1' });
+      customers.isTransportAuthorized.mockResolvedValue(true);
+      items.findByIds.mockResolvedValue([{ id: 'i1' }]);
+      repo.create.mockReturnValue({ status: 'CRIADA' });
+      repo.save.mockResolvedValue({ id: 'so1' });
+      repo.findOne.mockResolvedValue({ id: 'so1', status: 'CRIADA' });
+
+      const result = await service.create(dto);
+
+      expect(customers.isTransportAuthorized).toHaveBeenCalledWith('c1', 't1');
+      expect(items.findByIds).toHaveBeenCalledWith(['i1']);
+      expect(result).toEqual({ id: 'so1', status: 'CRIADA' });
+    });
+
+    it('rejects when the transport is not authorized for the customer', async () => {
+      customers.findOne.mockResolvedValue({ id: 'c1' });
+      transportTypes.findOne.mockResolvedValue({ id: 't1' });
+      customers.isTransportAuthorized.mockResolvedValue(false);
+
+      await expect(service.create(dto)).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      expect(items.findByIds).not.toHaveBeenCalled();
+    });
+
+    it('propagates when the customer does not exist', async () => {
+      customers.findOne.mockRejectedValue(new NotFoundException());
+      await expect(service.create(dto)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('propagates when an item does not exist', async () => {
+      customers.findOne.mockResolvedValue({ id: 'c1' });
+      transportTypes.findOne.mockResolvedValue({ id: 't1' });
+      customers.isTransportAuthorized.mockResolvedValue(true);
+      items.findByIds.mockRejectedValue(new NotFoundException());
+
+      await expect(service.create(dto)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('findOne', () => {
+    it('returns the order when found', async () => {
+      const order = { id: 'so1' } as SalesOrder;
+      repo.findOne.mockResolvedValue(order);
+      await expect(service.findOne('so1')).resolves.toBe(order);
+    });
+
+    it('throws when missing', async () => {
+      repo.findOne.mockResolvedValue(null);
+      await expect(service.findOne('x')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('findAll', () => {
+    it('lists with customer and transport relations', async () => {
+      repo.find.mockResolvedValue([]);
+      await service.findAll();
+      expect(repo.find).toHaveBeenCalledWith({
+        relations: { customer: true, transportType: true },
+        order: { createdAt: 'DESC' },
+      });
+    });
+  });
+});

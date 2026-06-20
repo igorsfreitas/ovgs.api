@@ -13,6 +13,7 @@ import {
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { ItemsModule } from './items/items.module';
+import { SalesOrdersModule } from './sales-orders/sales-orders.module';
 import { TransportTypesModule } from './transport-types/transport-types.module';
 
 @Module({
@@ -58,6 +59,7 @@ import { TransportTypesModule } from './transport-types/transport-types.module';
     TransportTypesModule,
     CustomersModule,
     ItemsModule,
+    SalesOrdersModule,
     HealthModule,
   ],
 })

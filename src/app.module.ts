@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
+import { CustomersModule } from './customers/customers.module';
 import {
   EnvironmentVariables,
   NodeEnv,
@@ -11,6 +12,7 @@ import {
 } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { TransportTypesModule } from './transport-types/transport-types.module';
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { HealthModule } from './health/health.module';
     CommonModule,
     DatabaseModule,
     AuthModule,
+    TransportTypesModule,
+    CustomersModule,
     HealthModule,
   ],
 })

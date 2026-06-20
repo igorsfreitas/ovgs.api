@@ -5,6 +5,7 @@ import {
   IsString,
   Max,
   Min,
+  MinLength,
   validateSync,
 } from 'class-validator';
 
@@ -46,6 +47,15 @@ export class EnvironmentVariables {
 
   @IsString()
   DATABASE_NAME = 'ovgs';
+
+  // Segredo de assinatura do JWT. O valor padrão serve só ao desenvolvimento;
+  // em produção DEVE ser sobrescrito por um segredo forte via variável de ambiente.
+  @IsString()
+  @MinLength(16)
+  JWT_SECRET = 'dev-insecure-secret-change-me!!';
+
+  @IsString()
+  JWT_EXPIRES_IN = '1d';
 }
 
 /** Função de validação consumida por `ConfigModule.forRoot({ validate })`. */

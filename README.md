@@ -201,10 +201,69 @@ Decisões e o porquê:
   estados, agendamento + guard de AGENDADA, monitoramento e auditoria.
 - Métrica atual: **131 testes unitários + 45 e2e**.
 
+### Como validar o teste
+
+Validação automatizada completa (mesma sequência do CI):
+
 ```bash
-npm run test:cov     # unit + cobertura
-npm run test:e2e     # integração
+nvm use && npm ci             # Node 24 + dependências
+npm run lint                  # sem erros
+npm run build                 # compila
+npm run db:up                 # PostgreSQL (necessário p/ e2e)
+npm run test:cov              # unitários + gate de cobertura
+npm run test:e2e              # integração (roda migrations no pretest)
 ```
+
+Resultado esperado:
+
+- `test:cov` → **Test Suites: 25 passed**, **Tests: 131 passed**; `All files`
+  com 100% em statements/functions/lines e branches ≥ 80% (o comando falha se a
+  cobertura cair abaixo do limite).
+- `test:e2e` → **Test Suites: 11 passed**, **Tests: 45 passed**.
+
+### Validação manual do fluxo de negócio (API no ar)
+
+Com `npm run start:dev` rodando e o admin semeado (`npm run seed`):
+
+```bash
+BASE=http://localhost:3000
+TOKEN=$(curl -s -X POST $BASE/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"admin@ovgs.local","password":"admin12345"}' \
+  | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+AUTH="Authorization: Bearer $TOKEN"
+
+# cadastros
+TT=$(curl -s -X POST $BASE/transport-types -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"name":"Caminhão","code":"TRUCK"}' | sed -E 's/.*"id":"([^"]+)".*/\1/')
+IT=$(curl -s -X POST $BASE/items -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"sku":"SKU-1","name":"Caixa"}' | sed -E 's/.*"id":"([^"]+)".*/\1/')
+CU=$(curl -s -X POST $BASE/customers -H "$AUTH" -H 'Content-Type: application/json' \
+  -d "{\"name\":\"ACME\",\"document\":\"12345678000199\",\"authorizedTransportTypeIds\":[\"$TT\"]}" \
+  | sed -E 's/.*"id":"([^"]+)".*/\1/')
+
+# cria a OV (regra: transporte autorizado + >=1 item) -> status CRIADA
+OV=$(curl -s -X POST $BASE/sales-orders -H "$AUTH" -H 'Content-Type: application/json' \
+  -d "{\"customerId\":\"$CU\",\"transportTypeId\":\"$TT\",\"items\":[{\"itemId\":\"$IT\",\"quantity\":2}]}" \
+  | sed -E 's/.*"id":"([^"]+)".*/\1/')
+
+# fluxo: CRIADA -> PLANEJADA -> (agenda + confirma) -> AGENDADA
+curl -s -X PATCH $BASE/sales-orders/$OV/status -H "$AUTH" -H 'Content-Type: application/json' -d '{"status":"PLANEJADA"}'
+curl -s -X PUT   $BASE/sales-orders/$OV/schedule -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"deliveryDate":"2030-01-01","windowStart":"08:00","windowEnd":"12:00"}'
+curl -s -X POST  $BASE/sales-orders/$OV/schedule/confirm -H "$AUTH"
+curl -s -X PATCH $BASE/sales-orders/$OV/status -H "$AUTH" -H 'Content-Type: application/json' -d '{"status":"AGENDADA"}'
+
+# trilha de auditoria da OV
+curl -s "$BASE/audit?entityId=$OV" -H "$AUTH"
+```
+
+Para validar as **rejeições** (regras de negócio): tentar criar OV com transporte
+não autorizado → **422**; com item inexistente → **404**; sem itens → **400**;
+pular estado (ex.: CRIADA → ENTREGUE) → **409**; ir a AGENDADA sem agendamento
+confirmado → **422**. Tudo isso também está coberto nos testes e2e.
+
+> Alternativa visual: abra **`/docs`**, clique em **Authorize**, cole o token e
+> exercite os endpoints pela própria interface do Swagger.
 
 ---
 

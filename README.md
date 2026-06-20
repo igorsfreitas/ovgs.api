@@ -112,6 +112,23 @@ Principais recursos (todos sob JWT, exceto `/auth/login`, `/health` e `/docs`):
 | Audit | `GET /audit` (ADMIN) | filtros `entityId`/`action` |
 | Health | `GET /health` (público) | ping no banco |
 
+Documentação detalhada de **todos os endpoints** (parâmetros, payloads e códigos
+de resposta) em **[`docs/API.md`](docs/API.md)**.
+
+### Coleção Postman
+
+Em **[`postman/`](postman)** há uma coleção pronta e um environment:
+
+1. Importe `postman/OVGS.postman_collection.json` e
+   `postman/OVGS.postman_environment.json` no Postman.
+2. Suba a API e rode o seed (`npm run seed`); selecione o environment **OVGS — Local**.
+3. Rode a coleção no **Collection Runner** (na ordem das pastas): a pasta *Auth*
+   captura o token automaticamente e cada criação encadeia os IDs nas variáveis.
+
+A coleção cobre **todos os cenários** — caminhos felizes e erros
+(400/401/403/404/409/422) — com testes de status em cada requisição (43 no total).
+Os cenários de RBAC `403` exigem um token de usuário `OPERATOR` em `{{operatorToken}}`.
+
 ---
 
 ## Modelo de domínio

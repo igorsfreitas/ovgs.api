@@ -9,9 +9,11 @@ import { ItemsService } from '../items/items.service';
 import { TransportType } from '../transport-types/entities/transport-type.entity';
 import { TransportTypesService } from '../transport-types/transport-types.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { Schedule } from './entities/schedule.entity';
 import { SalesOrderItem } from './entities/sales-order-item.entity';
 import { SalesOrder } from './entities/sales-order.entity';
 import { SalesOrderStatus } from './enums/sales-order-status.enum';
+import { SchedulingStatus } from './enums/scheduling-status.enum';
 import { InvalidStatusTransitionException } from './exceptions/invalid-status-transition.exception';
 import { canTransition } from './sales-order-state-machine';
 
@@ -20,6 +22,8 @@ export class SalesOrdersService {
   constructor(
     @InjectRepository(SalesOrder)
     private readonly repo: Repository<SalesOrder>,
+    @InjectRepository(Schedule)
+    private readonly schedules: Repository<Schedule>,
     private readonly customers: CustomersService,
     private readonly transportTypes: TransportTypesService,
     private readonly items: ItemsService,
@@ -88,8 +92,23 @@ export class SalesOrdersService {
     if (!canTransition(order.status, target)) {
       throw new InvalidStatusTransitionException(order.status, target);
     }
+    if (target === SalesOrderStatus.Agendada) {
+      await this.assertConfirmedSchedule(id);
+    }
     order.status = target;
     await this.repo.save(order);
     return this.findOne(id);
+  }
+
+  /** Garante que a OV possui um agendamento confirmado antes de ir a AGENDADA. */
+  private async assertConfirmedSchedule(orderId: string): Promise<void> {
+    const schedule = await this.schedules.findOne({
+      where: { salesOrder: { id: orderId } },
+    });
+    if (!schedule || schedule.status !== SchedulingStatus.Confirmed) {
+      throw new BusinessRuleException(
+        'Sales order requires a confirmed schedule before moving to AGENDADA',
+      );
+    }
   }
 }

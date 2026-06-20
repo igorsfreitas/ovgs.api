@@ -73,6 +73,20 @@ describe('SalesOrder status transitions (e2e)', () => {
           items: [{ itemId, quantity: 1 }],
         }),
     );
+
+    // AGENDADA exige um agendamento confirmado.
+    await request(app.getHttpServer())
+      .put(`/sales-orders/${orderId}/schedule`)
+      .set(auth())
+      .send({
+        deliveryDate: '2999-01-01',
+        windowStart: '08:00',
+        windowEnd: '12:00',
+      });
+    await request(app.getHttpServer())
+      .post(`/sales-orders/${orderId}/schedule/confirm`)
+      .set(auth())
+      .send();
   });
 
   afterAll(async () => {

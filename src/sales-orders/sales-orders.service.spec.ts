@@ -5,8 +5,10 @@ import { CustomersService } from '../customers/customers.service';
 import { ItemsService } from '../items/items.service';
 import { TransportTypesService } from '../transport-types/transport-types.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { Schedule } from './entities/schedule.entity';
 import { SalesOrder } from './entities/sales-order.entity';
 import { SalesOrderStatus } from './enums/sales-order-status.enum';
+import { SchedulingStatus } from './enums/scheduling-status.enum';
 import { InvalidStatusTransitionException } from './exceptions/invalid-status-transition.exception';
 import { SalesOrdersService } from './sales-orders.service';
 
@@ -17,6 +19,7 @@ describe('SalesOrdersService', () => {
     find: jest.fn(),
     findOne: jest.fn(),
   };
+  const schedules = { findOne: jest.fn() };
   const customers = { findOne: jest.fn(), isTransportAuthorized: jest.fn() };
   const transportTypes = { findOne: jest.fn() };
   const items = { findByIds: jest.fn() };
@@ -32,6 +35,7 @@ describe('SalesOrdersService', () => {
     jest.resetAllMocks();
     service = new SalesOrdersService(
       repo as unknown as Repository<SalesOrder>,
+      schedules as unknown as Repository<Schedule>,
       customers as unknown as CustomersService,
       transportTypes as unknown as TransportTypesService,
       items as unknown as ItemsService,
@@ -147,6 +151,55 @@ describe('SalesOrdersService', () => {
       await expect(
         service.updateStatus('x', SalesOrderStatus.Planejada),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('blocks AGENDADA without a schedule', async () => {
+      repo.findOne.mockResolvedValue({
+        id: 'so1',
+        status: SalesOrderStatus.Planejada,
+      });
+      schedules.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.updateStatus('so1', SalesOrderStatus.Agendada),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('blocks AGENDADA when the schedule is not confirmed', async () => {
+      repo.findOne.mockResolvedValue({
+        id: 'so1',
+        status: SalesOrderStatus.Planejada,
+      });
+      schedules.findOne.mockResolvedValue({
+        status: SchedulingStatus.Pending,
+      });
+
+      await expect(
+        service.updateStatus('so1', SalesOrderStatus.Agendada),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+
+    it('allows AGENDADA when a confirmed schedule exists', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({
+          id: 'so1',
+          status: SalesOrderStatus.Planejada,
+        })
+        .mockResolvedValueOnce({
+          id: 'so1',
+          status: SalesOrderStatus.Agendada,
+        });
+      schedules.findOne.mockResolvedValue({
+        status: SchedulingStatus.Confirmed,
+      });
+      repo.save.mockResolvedValue({});
+
+      const result = await service.updateStatus(
+        'so1',
+        SalesOrderStatus.Agendada,
+      );
+      expect(result.status).toBe(SalesOrderStatus.Agendada);
     });
   });
 });

@@ -1,0 +1,501 @@
+{
+  "info": {
+    "name": "OVGS API — Sistema de Gestão de Ordens de Venda",
+    "description": "Collection ponta a ponta da OVGS API. Estruturada por recurso, com encadeamento de IDs via variáveis e testes de status para os cenários de sucesso e de erro (400/401/403/404/409/422).\n\nComo usar:\n1. Suba a API (`npm run start:dev`) e rode o seed (`npm run seed`).\n2. Importe esta collection (e, opcionalmente, o environment `OVGS.postman_environment.json`).\n3. Rode na ordem das pastas (Collection Runner) — a pasta Auth captura o token e cada criação salva o ID para os passos seguintes.\n\nAuth: a collection usa Bearer {{accessToken}} por padrão; requisições públicas/ sem-token sobrescrevem para No Auth.\n\nObs.: cenários de RBAC 403 exigem um usuário OPERATOR (ver a pasta 'RBAC').",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "adminEmail", "value": "admin@ovgs.local" },
+    { "key": "adminPassword", "value": "admin12345" },
+    { "key": "operatorToken", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "rid", "value": "" },
+    { "key": "transportTypeId", "value": "" },
+    { "key": "secondTransportTypeId", "value": "" },
+    { "key": "itemId", "value": "" },
+    { "key": "customerId", "value": "" },
+    { "key": "salesOrderId", "value": "" },
+    { "key": "missingUuid", "value": "00000000-0000-4000-8000-000000000000" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (admin) — 200, captura token",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": ["pm.collectionVariables.set('rid', Date.now().toString());"] }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.access_token).to.be.a('string');",
+                  "pm.collectionVariables.set('accessToken', body.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"email\": \"{{adminEmail}}\", \"password\": \"{{adminPassword}}\" }" },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Autentica o admin e salva o JWT em {{accessToken}}. Também inicializa {{rid}} (sufixo único da execução)."
+          }
+        },
+        {
+          "name": "Login inválido — 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 401', () => pm.response.to.have.status(401));"] } }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"email\": \"{{adminEmail}}\", \"password\": \"senha-errada\" }" },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "description": "Credenciais inválidas devem retornar 401."
+          }
+        },
+        {
+          "name": "GET /auth/me — 200 (protegido)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('retorna email', () => pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('adminEmail')));"] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "description": "Retorna o usuário autenticado a partir do token."
+          }
+        },
+        {
+          "name": "GET /auth/me sem token — 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 401', () => pm.response.to.have.status(401));"] } }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "description": "Sem Bearer token deve retornar 401."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health — 200 (público)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('database up', () => pm.expect(pm.response.json().status).to.eql('ok'));"] } }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Healthcheck público com ping no banco."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transport Types",
+      "item": [
+        {
+          "name": "Criar (ADMIN) — 201, captura id",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('transportTypeId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Caminhão\", \"code\": \"TRUCK_{{rid}}\" }" },
+            "url": { "raw": "{{baseUrl}}/transport-types", "host": ["{{baseUrl}}"], "path": ["transport-types"] },
+            "description": "Cria o tipo de transporte que será AUTORIZADO para o cliente."
+          }
+        },
+        {
+          "name": "Criar segundo (NÃO autorizado) — 201",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('secondTransportTypeId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Carreta\", \"code\": \"CARRETA_{{rid}}\" }" },
+            "url": { "raw": "{{baseUrl}}/transport-types", "host": ["{{baseUrl}}"], "path": ["transport-types"] },
+            "description": "Segundo transporte, propositalmente NÃO autorizado para o cliente (usado no cenário 422 de OV)."
+          }
+        },
+        {
+          "name": "Criar inválido (code minúsculo) — 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Caminhão\", \"code\": \"lowercase\" }" },
+            "url": { "raw": "{{baseUrl}}/transport-types", "host": ["{{baseUrl}}"], "path": ["transport-types"] },
+            "description": "`code` deve ser CAIXA ALTA — validação do DTO retorna 400."
+          }
+        },
+        {
+          "name": "Criar duplicado (code) — 409",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 409', () => pm.response.to.have.status(409));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Outro\", \"code\": \"TRUCK_{{rid}}\" }" },
+            "url": { "raw": "{{baseUrl}}/transport-types", "host": ["{{baseUrl}}"], "path": ["transport-types"] },
+            "description": "Código repetido deve retornar 409 (conflito de unicidade)."
+          }
+        },
+        {
+          "name": "Listar — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/transport-types?activeOnly=true", "host": ["{{baseUrl}}"], "path": ["transport-types"], "query": [{ "key": "activeOnly", "value": "true" }] },
+            "description": "Lista os tipos de transporte (filtro opcional activeOnly)."
+          }
+        },
+        {
+          "name": "Buscar por id — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/transport-types/{{transportTypeId}}", "host": ["{{baseUrl}}"], "path": ["transport-types", "{{transportTypeId}}"] }
+          }
+        },
+        {
+          "name": "Buscar inexistente — 404",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 404', () => pm.response.to.have.status(404));"] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/transport-types/{{missingUuid}}", "host": ["{{baseUrl}}"], "path": ["transport-types", "{{missingUuid}}"] },
+            "description": "UUID válido porém inexistente retorna 404."
+          }
+        },
+        {
+          "name": "Atualizar (ADMIN) — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Caminhão (editado)\" }" },
+            "url": { "raw": "{{baseUrl}}/transport-types/{{transportTypeId}}", "host": ["{{baseUrl}}"], "path": ["transport-types", "{{transportTypeId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Items",
+      "item": [
+        {
+          "name": "Criar (ADMIN) — 201, captura id",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('itemId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"sku\": \"SKU_{{rid}}\", \"name\": \"Caixa\", \"unit\": \"CX\" }" },
+            "url": { "raw": "{{baseUrl}}/items", "host": ["{{baseUrl}}"], "path": ["items"] }
+          }
+        },
+        {
+          "name": "Criar inválido (sem name) — 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"sku\": \"SKU_{{rid}}_X\" }" },
+            "url": { "raw": "{{baseUrl}}/items", "host": ["{{baseUrl}}"], "path": ["items"] }
+          }
+        },
+        {
+          "name": "Criar duplicado (sku) — 409",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 409', () => pm.response.to.have.status(409));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"sku\": \"SKU_{{rid}}\", \"name\": \"Outra\" }" },
+            "url": { "raw": "{{baseUrl}}/items", "host": ["{{baseUrl}}"], "path": ["items"] }
+          }
+        },
+        {
+          "name": "Listar — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/items", "host": ["{{baseUrl}}"], "path": ["items"] } }
+        },
+        {
+          "name": "Buscar por id — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/items/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["items", "{{itemId}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        {
+          "name": "Criar c/ transporte autorizado — 201, captura id",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('customerId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"ACME Ltda\", \"document\": \"{{rid}}\", \"authorizedTransportTypeIds\": [\"{{transportTypeId}}\"] }" },
+            "url": { "raw": "{{baseUrl}}/customers", "host": ["{{baseUrl}}"], "path": ["customers"] },
+            "description": "Cria o cliente autorizando APENAS {{transportTypeId}} (o segundo transporte fica não autorizado)."
+          }
+        },
+        {
+          "name": "Criar inválido (document curto) — 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"X\", \"document\": \"123\" }" },
+            "url": { "raw": "{{baseUrl}}/customers", "host": ["{{baseUrl}}"], "path": ["customers"] }
+          }
+        },
+        {
+          "name": "Criar duplicado (document) — 409",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 409', () => pm.response.to.have.status(409));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Outro\", \"document\": \"{{rid}}\" }" },
+            "url": { "raw": "{{baseUrl}}/customers", "host": ["{{baseUrl}}"], "path": ["customers"] }
+          }
+        },
+        {
+          "name": "Buscar por id (com transportes) — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["customers", "{{customerId}}"] } }
+        },
+        {
+          "name": "Listar — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/customers", "host": ["{{baseUrl}}"], "path": ["customers"] } }
+        },
+        {
+          "name": "Atualizar — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"ACME S.A.\" }" },
+            "url": { "raw": "{{baseUrl}}/customers/{{customerId}}", "host": ["{{baseUrl}}"], "path": ["customers", "{{customerId}}"] }
+          }
+        },
+        {
+          "name": "Definir transportes autorizados — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"transportTypeIds\": [\"{{transportTypeId}}\"] }" },
+            "url": { "raw": "{{baseUrl}}/customers/{{customerId}}/transport-types", "host": ["{{baseUrl}}"], "path": ["customers", "{{customerId}}", "transport-types"] },
+            "description": "Substitui a lista de transportes autorizados do cliente."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales Orders",
+      "item": [
+        {
+          "name": "Criar OV — 201 (CRIADA), captura id",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 201', () => pm.response.to.have.status(201));", "pm.test('status CRIADA', () => pm.expect(pm.response.json().status).to.eql('CRIADA'));", "pm.collectionVariables.set('salesOrderId', pm.response.json().id);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"customerId\": \"{{customerId}}\", \"transportTypeId\": \"{{transportTypeId}}\", \"items\": [{ \"itemId\": \"{{itemId}}\", \"quantity\": 2 }] }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders", "host": ["{{baseUrl}}"], "path": ["sales-orders"] },
+            "description": "Regras: cliente e transporte existem, transporte autorizado, >=1 item existente. Nasce em CRIADA."
+          }
+        },
+        {
+          "name": "Criar OV transporte não autorizado — 422",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 422', () => pm.response.to.have.status(422));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"customerId\": \"{{customerId}}\", \"transportTypeId\": \"{{secondTransportTypeId}}\", \"items\": [{ \"itemId\": \"{{itemId}}\", \"quantity\": 1 }] }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders", "host": ["{{baseUrl}}"], "path": ["sales-orders"] },
+            "description": "Transporte não autorizado para o cliente → 422 (regra de negócio)."
+          }
+        },
+        {
+          "name": "Criar OV item inexistente — 404",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 404', () => pm.response.to.have.status(404));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"customerId\": \"{{customerId}}\", \"transportTypeId\": \"{{transportTypeId}}\", \"items\": [{ \"itemId\": \"{{missingUuid}}\", \"quantity\": 1 }] }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders", "host": ["{{baseUrl}}"], "path": ["sales-orders"] }
+          }
+        },
+        {
+          "name": "Criar OV sem itens — 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 400', () => pm.response.to.have.status(400));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"customerId\": \"{{customerId}}\", \"transportTypeId\": \"{{transportTypeId}}\", \"items\": [] }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders", "host": ["{{baseUrl}}"], "path": ["sales-orders"] }
+          }
+        },
+        {
+          "name": "Listar c/ filtros — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('envelope paginado', () => { const b = pm.response.json(); pm.expect(b).to.have.property('total'); pm.expect(b).to.have.property('data'); });"] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/sales-orders?customerId={{customerId}}&page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["sales-orders"], "query": [{ "key": "customerId", "value": "{{customerId}}" }, { "key": "page", "value": "1" }, { "key": "limit", "value": "10" }] },
+            "description": "Monitoramento: filtros por status, customerId, transportTypeId, dateFrom/dateTo + paginação."
+          }
+        },
+        {
+          "name": "Detalhe da OV — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}"] } }
+        },
+        {
+          "name": "Status → PLANEJADA — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('PLANEJADA', () => pm.expect(pm.response.json().status).to.eql('PLANEJADA'));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"status\": \"PLANEJADA\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/status", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "status"] }
+          }
+        },
+        {
+          "name": "Status → ENTREGUE (pulo) — 409",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 409', () => pm.response.to.have.status(409));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"status\": \"ENTREGUE\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/status", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "status"] },
+            "description": "Transição fora da sequência (PLANEJADA → ENTREGUE) → 409."
+          }
+        },
+        {
+          "name": "Trocar transporte — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"transportTypeId\": \"{{transportTypeId}}\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/transport-type", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "transport-type"] },
+            "description": "Revalida a autorização do transporte e gera evento de auditoria."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scheduling",
+      "item": [
+        {
+          "name": "Status → AGENDADA sem agendamento — 422",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 422', () => pm.response.to.have.status(422));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"status\": \"AGENDADA\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/status", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "status"] },
+            "description": "AGENDADA exige agendamento confirmado → 422 antes de agendar."
+          }
+        },
+        {
+          "name": "Definir agendamento — 200 (PENDING)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));"] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"deliveryDate\": \"2030-01-01\", \"windowStart\": \"08:00\", \"windowEnd\": \"12:00\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/schedule", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "schedule"] }
+          }
+        },
+        {
+          "name": "Definir janela inválida — 422",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 422', () => pm.response.to.have.status(422));"] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"deliveryDate\": \"2030-01-01\", \"windowStart\": \"18:00\", \"windowEnd\": \"09:00\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/schedule", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "schedule"] },
+            "description": "windowEnd <= windowStart → 422."
+          }
+        },
+        {
+          "name": "Confirmar agendamento — 200 (CONFIRMED)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('CONFIRMED', () => pm.expect(pm.response.json().status).to.eql('CONFIRMED'));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/schedule/confirm", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "schedule", "confirm"] }
+          }
+        },
+        {
+          "name": "Status → AGENDADA — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('AGENDADA', () => pm.expect(pm.response.json().status).to.eql('AGENDADA'));"] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"status\": \"AGENDADA\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/status", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "status"] },
+            "description": "Com agendamento confirmado, a transição agora é permitida."
+          }
+        },
+        {
+          "name": "Reagendar — 200 (volta PENDING)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"deliveryDate\": \"2030-02-01\", \"windowStart\": \"14:00\", \"windowEnd\": \"18:00\" }" },
+            "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/schedule/reschedule", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "schedule", "reschedule"] }
+          }
+        },
+        {
+          "name": "Consultar agendamento — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"] } }],
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/sales-orders/{{salesOrderId}}/schedule", "host": ["{{baseUrl}}"], "path": ["sales-orders", "{{salesOrderId}}", "schedule"] } }
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "Trilha da OV (ADMIN) — 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));", "pm.test('tem eventos', () => pm.expect(pm.response.json().total).to.be.above(0));"] } }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/audit?entityId={{salesOrderId}}", "host": ["{{baseUrl}}"], "path": ["audit"], "query": [{ "key": "entityId", "value": "{{salesOrderId}}" }] },
+            "description": "Trilha de auditoria da OV (criação, mudanças de status, agendamento, transporte)."
+          }
+        },
+        {
+          "name": "Trilha como OPERATOR — 403 (requer {{operatorToken}})",
+          "event": [{ "listen": "test", "script": { "exec": ["if (!pm.collectionVariables.get('operatorToken')) { pm.test.skip('defina {{operatorToken}} (usuário OPERATOR) para validar o 403'); return; }", "pm.test('status 403', () => pm.response.to.have.status(403));"] } }],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{operatorToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/audit", "host": ["{{baseUrl}}"], "path": ["audit"] },
+            "description": "Leitura de auditoria é restrita a ADMIN. Para validar o 403, gere um token de um usuário OPERATOR e coloque em {{operatorToken}}."
+          }
+        }
+      ]
+    }
+  ]
+}

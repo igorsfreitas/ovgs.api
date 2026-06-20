@@ -58,13 +58,12 @@ export function validateEnv(
 
   const errors = validateSync(validated, { skipMissingProperties: false });
   if (errors.length > 0) {
+    const details = errors.map((e) => ({
+      property: e.property,
+      constraints: e.constraints,
+    }));
     throw new Error(
-      `Invalid environment variables:\n${errors
-        .map(
-          (e) =>
-            `  - ${e.property}: ${Object.values(e.constraints ?? {}).join(', ')}`,
-        )
-        .join('\n')}`,
+      `Invalid environment variables: ${JSON.stringify(details)}`,
     );
   }
 

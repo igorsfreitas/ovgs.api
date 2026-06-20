@@ -12,6 +12,7 @@ import {
 } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { ItemsModule } from './items/items.module';
 import { TransportTypesModule } from './transport-types/transport-types.module';
 
 @Module({
@@ -56,6 +57,7 @@ import { TransportTypesModule } from './transport-types/transport-types.module';
     AuthModule,
     TransportTypesModule,
     CustomersModule,
+    ItemsModule,
     HealthModule,
   ],
 })

@@ -117,17 +117,34 @@ de resposta) em **[`docs/API.md`](docs/API.md)**.
 
 ### Coleção Postman
 
-Em **[`postman/`](postman)** há uma coleção pronta e um environment:
+Em **[`postman/`](postman)** há uma coleção pronta e um environment. A coleção
+cobre **todos os cenários** — caminhos felizes e erros (400/401/403/404/409/422) —
+com teste de status em cada requisição (**43 requisições / 53 assertions**),
+captura automática do token e **encadeamento de IDs** por variáveis (roda ponta a
+ponta na ordem das pastas, começando por *Auth*).
+
+**Pré-requisitos:** API no ar (`npm run start:dev`) + admin semeado (`npm run seed`).
+
+**Opção A — Postman (UI):**
 
 1. Importe `postman/OVGS.postman_collection.json` e
-   `postman/OVGS.postman_environment.json` no Postman.
-2. Suba a API e rode o seed (`npm run seed`); selecione o environment **OVGS — Local**.
-3. Rode a coleção no **Collection Runner** (na ordem das pastas): a pasta *Auth*
-   captura o token automaticamente e cada criação encadeia os IDs nas variáveis.
+   `postman/OVGS.postman_environment.json`.
+2. Selecione o environment **OVGS — Local**.
+3. Rode a coleção no **Collection Runner** (mantenha a ordem das pastas).
 
-A coleção cobre **todos os cenários** — caminhos felizes e erros
-(400/401/403/404/409/422) — com testes de status em cada requisição (43 no total).
-Os cenários de RBAC `403` exigem um token de usuário `OPERATOR` em `{{operatorToken}}`.
+**Opção B — linha de comando (newman):**
+
+```bash
+npx newman run postman/OVGS.postman_collection.json \
+  -e postman/OVGS.postman_environment.json
+# esperado: 43 requests, 53 assertions, 0 failed
+```
+
+**Cenário de RBAC `403`:** a leitura de auditoria é restrita a `ADMIN`. O teste
+correspondente fica *skipped* até você fornecer um token de usuário `OPERATOR` na
+variável `operatorToken` (environment). Para habilitá-lo: crie/seed um usuário
+`OPERATOR`, faça `POST /auth/login` com ele e cole o `access_token` em
+`operatorToken` — o teste passa a exigir e validar o `403`.
 
 ---
 

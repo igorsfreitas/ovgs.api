@@ -29,10 +29,16 @@ describe('SalesOrdersController', () => {
     expect(service.create).toHaveBeenCalledWith(dto);
   });
 
-  it('delegates findAll', async () => {
-    service.findAll.mockResolvedValue([]);
-    await controller.findAll();
-    expect(service.findAll).toHaveBeenCalled();
+  it('delegates findAll with the query', async () => {
+    const query = { page: 1, limit: 20 };
+    service.findAll.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
+    await controller.findAll(query);
+    expect(service.findAll).toHaveBeenCalledWith(query);
   });
 
   it('delegates findOne', async () => {

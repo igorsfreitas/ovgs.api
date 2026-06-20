@@ -16,7 +16,7 @@ describe('SalesOrdersService', () => {
   const repo = {
     create: jest.fn(),
     save: jest.fn(),
-    find: jest.fn(),
+    findAndCount: jest.fn(),
     findOne: jest.fn(),
   };
   const schedules = { findOne: jest.fn() };
@@ -105,13 +105,46 @@ describe('SalesOrdersService', () => {
   });
 
   describe('findAll', () => {
-    it('lists with customer and transport relations', async () => {
-      repo.find.mockResolvedValue([]);
-      await service.findAll();
-      expect(repo.find).toHaveBeenCalledWith({
-        relations: { customer: true, transportType: true },
-        order: { createdAt: 'DESC' },
+    it('applies all filters with a date range and paginates', async () => {
+      repo.findAndCount.mockResolvedValue([[{ id: 'so1' }], 1]);
+
+      const result = await service.findAll({
+        status: SalesOrderStatus.Criada,
+        customerId: 'c1',
+        transportTypeId: 't1',
+        dateFrom: '2024-01-01',
+        dateTo: '2024-12-31',
+        page: 2,
+        limit: 5,
       });
+
+      expect(result).toEqual({
+        data: [{ id: 'so1' }],
+        total: 1,
+        page: 2,
+        limit: 5,
+      });
+      expect(repo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 5, take: 5 }),
+      );
+    });
+
+    it('returns paginated defaults with no filters', async () => {
+      repo.findAndCount.mockResolvedValue([[], 0]);
+      const result = await service.findAll({ page: 1, limit: 20 });
+      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20 });
+    });
+
+    it('filters by dateFrom only', async () => {
+      repo.findAndCount.mockResolvedValue([[], 0]);
+      await service.findAll({ dateFrom: '2024-01-01', page: 1, limit: 20 });
+      expect(repo.findAndCount).toHaveBeenCalledTimes(1);
+    });
+
+    it('filters by dateTo only', async () => {
+      repo.findAndCount.mockResolvedValue([[], 0]);
+      await service.findAll({ dateTo: '2024-12-31', page: 1, limit: 20 });
+      expect(repo.findAndCount).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -6,8 +6,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { QuerySalesOrdersDto } from './dto/query-sales-orders.dto';
 import { UpdateSalesOrderStatusDto } from './dto/update-sales-order-status.dto';
 import { SalesOrdersService } from './sales-orders.service';
 
@@ -21,8 +23,8 @@ export class SalesOrdersController {
   }
 
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query() query: QuerySalesOrdersDto) {
+    return this.service.findAll(query);
   }
 
   @Get(':id')

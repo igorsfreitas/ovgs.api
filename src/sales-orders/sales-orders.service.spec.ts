@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { BusinessRuleException } from '../common/exceptions/business-rule.exception';
 import { CustomersService } from '../customers/customers.service';
@@ -23,6 +24,7 @@ describe('SalesOrdersService', () => {
   const customers = { findOne: jest.fn(), isTransportAuthorized: jest.fn() };
   const transportTypes = { findOne: jest.fn() };
   const items = { findByIds: jest.fn() };
+  const events = { emitAsync: jest.fn() };
   let service: SalesOrdersService;
 
   const dto: CreateSalesOrderDto = {
@@ -39,6 +41,7 @@ describe('SalesOrdersService', () => {
       customers as unknown as CustomersService,
       transportTypes as unknown as TransportTypesService,
       items as unknown as ItemsService,
+      events as unknown as EventEmitter2,
     );
   });
 
@@ -233,6 +236,42 @@ describe('SalesOrdersService', () => {
         SalesOrderStatus.Agendada,
       );
       expect(result.status).toBe(SalesOrderStatus.Agendada);
+    });
+  });
+
+  describe('changeTransport', () => {
+    it('changes the transport when authorized and audits it', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({
+          id: 'so1',
+          customer: { id: 'c1' },
+          transportType: { id: 't1' },
+        })
+        .mockResolvedValueOnce({ id: 'so1', transportType: { id: 't2' } });
+      transportTypes.findOne.mockResolvedValue({ id: 't2' });
+      customers.isTransportAuthorized.mockResolvedValue(true);
+      repo.save.mockResolvedValue({});
+
+      const result = await service.changeTransport('so1', 't2', 'admin@ovgs');
+
+      expect(customers.isTransportAuthorized).toHaveBeenCalledWith('c1', 't2');
+      expect(events.emitAsync).toHaveBeenCalled();
+      expect(result.transportType.id).toBe('t2');
+    });
+
+    it('rejects when the new transport is not authorized', async () => {
+      repo.findOne.mockResolvedValue({
+        id: 'so1',
+        customer: { id: 'c1' },
+        transportType: { id: 't1' },
+      });
+      transportTypes.findOne.mockResolvedValue({ id: 't2' });
+      customers.isTransportAuthorized.mockResolvedValue(false);
+
+      await expect(service.changeTransport('so1', 't2')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
     });
   });
 });

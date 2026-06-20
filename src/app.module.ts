@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { LoggerModule } from 'nestjs-pino';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
 import { CustomersModule } from './customers/customers.module';
@@ -53,6 +55,7 @@ import { TransportTypesModule } from './transport-types/transport-types.module';
         };
       },
     }),
+    EventEmitterModule.forRoot(),
     CommonModule,
     DatabaseModule,
     AuthModule,
@@ -60,6 +63,7 @@ import { TransportTypesModule } from './transport-types/transport-types.module';
     CustomersModule,
     ItemsModule,
     SalesOrdersModule,
+    AuditModule,
     HealthModule,
   ],
 })

@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { BusinessRuleException } from '../common/exceptions/business-rule.exception';
 import { ScheduleDto } from './dto/schedule.dto';
@@ -10,6 +11,7 @@ import { SchedulingService } from './scheduling.service';
 describe('SchedulingService', () => {
   const repo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
   const salesOrders = { findOne: jest.fn() };
+  const events = { emitAsync: jest.fn() };
   let service: SchedulingService;
 
   const futureDate = '2999-01-01';
@@ -24,6 +26,7 @@ describe('SchedulingService', () => {
     service = new SchedulingService(
       repo as unknown as Repository<Schedule>,
       salesOrders as unknown as SalesOrdersService,
+      events as unknown as EventEmitter2,
     );
   });
 

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
@@ -7,6 +8,7 @@ import {
   MoreThanOrEqual,
   Repository,
 } from 'typeorm';
+import { AUDIT_EVENT, AuditAction } from '../audit/audit.types';
 import { BusinessRuleException } from '../common/exceptions/business-rule.exception';
 import { Customer } from '../customers/entities/customer.entity';
 import { CustomersService } from '../customers/customers.service';
@@ -41,9 +43,10 @@ export class SalesOrdersService {
     private readonly customers: CustomersService,
     private readonly transportTypes: TransportTypesService,
     private readonly items: ItemsService,
+    private readonly events: EventEmitter2,
   ) {}
 
-  async create(dto: CreateSalesOrderDto): Promise<SalesOrder> {
+  async create(dto: CreateSalesOrderDto, actor?: string): Promise<SalesOrder> {
     // 1. Cliente e tipo de transporte devem existir.
     await this.customers.findOne(dto.customerId);
     await this.transportTypes.findOne(dto.transportTypeId);
@@ -76,6 +79,20 @@ export class SalesOrdersService {
       ),
     });
     const saved = await this.repo.save(order);
+
+    await this.events.emitAsync(AUDIT_EVENT, {
+      action: AuditAction.SalesOrderCreated,
+      entityName: 'SalesOrder',
+      entityId: saved.id,
+      newState: {
+        status: SalesOrderStatus.Criada,
+        customerId: dto.customerId,
+        transportTypeId: dto.transportTypeId,
+        items: dto.items,
+      },
+      actor,
+    });
+
     return this.findOne(saved.id);
   }
 
@@ -133,6 +150,7 @@ export class SalesOrdersService {
   async updateStatus(
     id: string,
     target: SalesOrderStatus,
+    actor?: string,
   ): Promise<SalesOrder> {
     const order = await this.findOne(id);
     if (!canTransition(order.status, target)) {
@@ -141,8 +159,54 @@ export class SalesOrdersService {
     if (target === SalesOrderStatus.Agendada) {
       await this.assertConfirmedSchedule(id);
     }
+    const previous = order.status;
     order.status = target;
     await this.repo.save(order);
+
+    await this.events.emitAsync(AUDIT_EVENT, {
+      action: AuditAction.SalesOrderStatusChanged,
+      entityName: 'SalesOrder',
+      entityId: id,
+      previousState: { status: previous },
+      newState: { status: target },
+      actor,
+    });
+
+    return this.findOne(id);
+  }
+
+  /** Troca o tipo de transporte da OV (revalidando a autorização do cliente). */
+  async changeTransport(
+    id: string,
+    transportTypeId: string,
+    actor?: string,
+  ): Promise<SalesOrder> {
+    const order = await this.findOne(id);
+    await this.transportTypes.findOne(transportTypeId);
+
+    const authorized = await this.customers.isTransportAuthorized(
+      order.customer.id,
+      transportTypeId,
+    );
+    if (!authorized) {
+      throw new BusinessRuleException(
+        `Transport type ${transportTypeId} is not authorized for customer ${order.customer.id}`,
+      );
+    }
+
+    const previous = order.transportType.id;
+    order.transportType = { id: transportTypeId } as TransportType;
+    await this.repo.save(order);
+
+    await this.events.emitAsync(AUDIT_EVENT, {
+      action: AuditAction.SalesOrderTransportChanged,
+      entityName: 'SalesOrder',
+      entityId: id,
+      previousState: { transportTypeId: previous },
+      newState: { transportTypeId },
+      actor,
+    });
+
     return this.findOne(id);
   }
 

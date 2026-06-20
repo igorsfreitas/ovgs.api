@@ -1,3 +1,4 @@
+import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { ScheduleDto } from './dto/schedule.dto';
 import { SchedulingController } from './scheduling.controller';
 import { SchedulingService } from './scheduling.service';
@@ -8,6 +9,11 @@ describe('SchedulingController', () => {
     define: jest.fn(),
     confirm: jest.fn(),
     reschedule: jest.fn(),
+  };
+  const user: AuthenticatedUser = {
+    id: 'u1',
+    email: 'admin@ovgs',
+    role: 'ADMIN',
   };
   let controller: SchedulingController;
 
@@ -30,21 +36,21 @@ describe('SchedulingController', () => {
     expect(service.findByOrder).toHaveBeenCalledWith('so1');
   });
 
-  it('delegates define', async () => {
+  it('delegates define with the actor', async () => {
     service.define.mockResolvedValue({ id: 's1' });
-    await controller.define('so1', dto);
-    expect(service.define).toHaveBeenCalledWith('so1', dto);
+    await controller.define('so1', dto, user);
+    expect(service.define).toHaveBeenCalledWith('so1', dto, 'admin@ovgs');
   });
 
-  it('delegates confirm', async () => {
+  it('delegates confirm with the actor', async () => {
     service.confirm.mockResolvedValue({ id: 's1' });
-    await controller.confirm('so1');
-    expect(service.confirm).toHaveBeenCalledWith('so1');
+    await controller.confirm('so1', user);
+    expect(service.confirm).toHaveBeenCalledWith('so1', 'admin@ovgs');
   });
 
-  it('delegates reschedule', async () => {
+  it('delegates reschedule with the actor', async () => {
     service.reschedule.mockResolvedValue({ id: 's1' });
-    await controller.reschedule('so1', dto);
-    expect(service.reschedule).toHaveBeenCalledWith('so1', dto);
+    await controller.reschedule('so1', dto, user);
+    expect(service.reschedule).toHaveBeenCalledWith('so1', dto, 'admin@ovgs');
   });
 });

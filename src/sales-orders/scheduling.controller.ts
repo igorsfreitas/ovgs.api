@@ -9,6 +9,8 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { ScheduleDto } from './dto/schedule.dto';
 import { SchedulingService } from './scheduling.service';
 
@@ -22,19 +24,30 @@ export class SchedulingController {
   }
 
   @Put()
-  define(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ScheduleDto) {
-    return this.scheduling.define(id, dto);
+  define(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ScheduleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.scheduling.define(id, dto, user.email);
   }
 
   @Post('confirm')
   @HttpCode(HttpStatus.OK)
-  confirm(@Param('id', ParseUUIDPipe) id: string) {
-    return this.scheduling.confirm(id);
+  confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.scheduling.confirm(id, user.email);
   }
 
   @Post('reschedule')
   @HttpCode(HttpStatus.OK)
-  reschedule(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ScheduleDto) {
-    return this.scheduling.reschedule(id, dto);
+  reschedule(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ScheduleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.scheduling.reschedule(id, dto, user.email);
   }
 }

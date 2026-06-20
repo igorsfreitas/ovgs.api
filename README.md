@@ -116,15 +116,67 @@ Principais recursos (todos sob JWT, exceto `/auth/login`, `/health` e `/docs`):
 
 ## Modelo de domínio
 
+```mermaid
+erDiagram
+    CUSTOMER {
+        uuid id PK
+        string document UK
+        string name
+        bool isActive
+    }
+    TRANSPORT_TYPE {
+        uuid id PK
+        string code UK
+        string name
+        bool isActive
+    }
+    ITEM {
+        uuid id PK
+        string sku UK
+        string name
+        string unit
+    }
+    SALES_ORDER {
+        uuid id PK
+        uuid customer_id FK
+        uuid transport_type_id FK
+        enum status
+    }
+    SALES_ORDER_ITEM {
+        uuid id PK
+        uuid sales_order_id FK
+        uuid item_id FK
+        int quantity
+    }
+    SCHEDULE {
+        uuid id PK
+        uuid sales_order_id FK
+        date deliveryDate
+        time windowStart
+        time windowEnd
+        enum status
+    }
+    AUDIT_EVENT {
+        uuid id PK
+        enum action
+        string entityName
+        uuid entityId
+        jsonb previousState
+        jsonb newState
+        string actor
+    }
+
+    CUSTOMER }o--o{ TRANSPORT_TYPE : "autoriza"
+    CUSTOMER ||--o{ SALES_ORDER : "possui"
+    TRANSPORT_TYPE ||--o{ SALES_ORDER : "usado em"
+    SALES_ORDER ||--|{ SALES_ORDER_ITEM : "contém"
+    ITEM ||--o{ SALES_ORDER_ITEM : "referenciado em"
+    SALES_ORDER ||--|| SCHEDULE : "agenda"
 ```
-Usuário (auth/RBAC)
-TipoDeTransporte ─┐
-Cliente ──N:N─────┘ (transportes autorizados)
-Item (SKU)
-OrdemDeVenda ── N:1 Cliente, N:1 TipoDeTransporte, status, 1:N ItemDaOV(→Item, quantidade)
-Agendamento ── 1:1 OrdemDeVenda (data, janela, status)
-EventoDeAuditoria (ator, ação, entidade, estado anterior/posterior, timestamp)
-```
+
+> `AUDIT_EVENT` e o `USER` (autenticação) ficam **desacoplados** por design: a
+> auditoria referencia a entidade por `entityId`/`entityName` (sem FK) para ser
+> append-only e independente do ciclo de vida das demais tabelas.
 
 Regras centrais:
 
@@ -135,8 +187,14 @@ Regras centrais:
 
 ### Fluxo operacional (máquina de estados)
 
-```
-CRIADA → PLANEJADA → AGENDADA → EM_TRANSPORTE → ENTREGUE
+```mermaid
+stateDiagram-v2
+    [*] --> CRIADA
+    CRIADA --> PLANEJADA
+    PLANEJADA --> AGENDADA: requer agendamento confirmado
+    AGENDADA --> EM_TRANSPORTE
+    EM_TRANSPORTE --> ENTREGUE
+    ENTREGUE --> [*]
 ```
 
 - Apenas transições sequenciais são aceitas; o resto é rejeitado (→ 409).
@@ -174,6 +232,9 @@ Decisões e o porquê:
 - **Agendamento dentro do agregado de OV**, evitando dependência circular entre
   módulos e mantendo a invariante "AGENDADA exige agendamento confirmado" coesa.
 - **Filtro de exceções único** padroniza o corpo de erro e centraliza o log.
+
+As decisões arquiteturais estão registradas em detalhe nos
+**[ADRs](docs/adr/)** (`docs/adr/`).
 
 ---
 
